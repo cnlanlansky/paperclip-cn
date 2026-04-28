@@ -2887,5 +2887,6 @@
   "Included implicitly": "隐式包含",
   "selected": "所选",
   "role": "角色",
-  "type in what kind of agent you want here": "在这里输入你想要的智能体类型"
+  "type in what kind of agent you want here": "在这里输入你想要的智能体类型",
+  "Decision note": "决策备注"
 }

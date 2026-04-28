@@ -8,6 +8,7 @@ const VERSION = "2026.427.0";
 const LOCALE = "zh-CN";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const sourceLocaleFile = path.join(here, "locales", LOCALE, "common.json");
+const runtimeScriptFile = path.join(here, "runtime", "paperclip-cn-runtime.js");
 
 const routeStart = "// PAPERCLIP_CN_LOCALE_ROUTE_START";
 const routeEnd = "// PAPERCLIP_CN_LOCALE_ROUTE_END";
@@ -33,17 +34,23 @@ async function readJson(filePath) {
   return JSON.parse(await fs.readFile(filePath, "utf8"));
 }
 
-function getNpmCacheDirs() {
-  const dirs = new Set();
-
+function readNpmPath(args) {
   try {
-    const npmCache = execFileSync("npm", ["config", "get", "cache"], {
+    const value = execFileSync("npm", args, {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
-    if (npmCache && npmCache !== "undefined" && npmCache !== "null") dirs.add(path.resolve(expandHomePrefix(npmCache)));
+    if (!value || value === "undefined" || value === "null") return null;
+    return path.resolve(expandHomePrefix(value));
   } catch {
+    return null;
   }
+}
+
+function getNpmCacheDirs() {
+  const dirs = new Set();
+  const npmCache = readNpmPath(["config", "get", "cache"]);
+  if (npmCache) dirs.add(npmCache);
 
   if (process.env.npm_config_cache) dirs.add(path.resolve(expandHomePrefix(process.env.npm_config_cache)));
   if (process.env.NPM_CONFIG_CACHE) dirs.add(path.resolve(expandHomePrefix(process.env.NPM_CONFIG_CACHE)));
@@ -51,6 +58,17 @@ function getNpmCacheDirs() {
   dirs.add(path.join(os.homedir(), ".npm"));
 
   return Array.from(dirs);
+}
+
+function getNpmGlobalRoots() {
+  const roots = new Set();
+  const npmRoot = readNpmPath(["root", "-g"]);
+  if (npmRoot) roots.add(npmRoot);
+  if (process.env.APPDATA) roots.add(path.join(process.env.APPDATA, "npm", "node_modules"));
+  roots.add(path.join(os.homedir(), ".npm-global", "lib", "node_modules"));
+  roots.add("/usr/local/lib/node_modules");
+  roots.add("/opt/homebrew/lib/node_modules");
+  return Array.from(roots);
 }
 
 async function findServerPackage() {
@@ -67,6 +85,11 @@ async function findServerPackage() {
       if (!entry.isDirectory()) continue;
       candidates.push(path.join(npxRoot, entry.name, "node_modules", "@paperclipai", "server"));
     }
+  }
+
+  for (const globalRoot of getNpmGlobalRoots()) {
+    candidates.push(path.join(globalRoot, "paperclipai", "node_modules", "@paperclipai", "server"));
+    candidates.push(path.join(globalRoot, "@paperclipai", "server"));
   }
 
   const matches = [];
@@ -141,14 +164,20 @@ async function patchAppJs(serverDir) {
   return appFile;
 }
 
-function runtimeTranslationScript() {
-  return `${htmlStart}\n<script>\n(() => {\n  if (window.__PAPERCLIP_CN_RUNTIME_TRANSLATION__) return;\n  window.__PAPERCLIP_CN_RUNTIME_TRANSLATION__ = true;\n  const DEFAULT_LOCALE = "zh-CN";\n  const TEXT_ATTRIBUTES = ["placeholder", "title", "aria-label", "aria-description", "aria-placeholder", "aria-valuetext", "alt"];\n  const FORM_VALUE_TYPES = new Set(["button", "submit", "reset"]);\n  const SKIPPED_TEXT_TAGS = new Set(["SCRIPT", "STYLE", "CODE", "PRE", "TEXTAREA"]);\n  const SKIPPED_ATTRIBUTE_TAGS = new Set(["SCRIPT", "STYLE"]);\n  const PLACEHOLDER_RE = /\\{[a-zA-Z0-9_]+\\}/g;\n  let translations = {};\n  let patternTranslations = [];\n  let observer = null;\n  const resolveLocale = () => localStorage.getItem("paperclip.locale")?.trim() || DEFAULT_LOCALE;\n  const escapeRegExp = (value) => value.replace(/[.*+?^\${}()|[\\]\\\\]/g, "\\\\$&");\n  const buildPatternTranslations = (table) => {\n    patternTranslations = Object.entries(table).flatMap(([input, output]) => {\n      const placeholders = input.match(PLACEHOLDER_RE) ?? [];\n      if (placeholders.length === 0 || placeholders.some((placeholder) => !output.includes(placeholder))) return [];\n      const pattern = input.split(PLACEHOLDER_RE).map(escapeRegExp).join("(.+?)");\n      return [{ pattern: new RegExp("^" + pattern + "$"), output, placeholders }];\n    });\n  };\n  const translateTrimmedValue = (value) => {\n    const exact = translations[value];\n    if (exact) return exact;\n    for (const rule of patternTranslations) {\n      const match = value.match(rule.pattern);\n      if (!match) continue;\n      return rule.placeholders.reduce((output, placeholder, index) => output.replaceAll(placeholder, match[index + 1] ?? ""), rule.output);\n    }\n    return value;\n  };\n  const translateValue = (value) => {\n    const trimmed = value.trim();\n    if (!trimmed) return value;\n    const translated = translateTrimmedValue(trimmed);\n    if (translated === trimmed) return value;\n    const leading = value.match(/^\\s*/)?.[0] ?? "";\n    const trailing = value.match(/\\s*$/)?.[0] ?? "";\n    return leading + translated + trailing;\n  };\n  const isEditableElement = (element) => element.closest("[contenteditable]:not([contenteditable='false'])") !== null;\n  const shouldSkipTextElement = (element) => SKIPPED_TEXT_TAGS.has(element.tagName) || isEditableElement(element);\n  const shouldSkipAttributeElement = (element) => SKIPPED_ATTRIBUTE_TAGS.has(element.tagName);\n  const translateTextNode = (node) => {\n    const parent = node.parentElement;\n    if (!parent || shouldSkipTextElement(parent)) return;\n    const translated = translateValue(node.nodeValue ?? "");\n    if (translated !== node.nodeValue) node.nodeValue = translated;\n  };\n  const translateElement = (element) => {\n    if (shouldSkipAttributeElement(element)) return;\n    for (const attribute of TEXT_ATTRIBUTES) {\n      const value = element.getAttribute(attribute);\n      if (!value) continue;\n      const translated = translateValue(value);\n      if (translated !== value) element.setAttribute(attribute, translated);\n    }\n    if (element instanceof HTMLInputElement && FORM_VALUE_TYPES.has(element.type)) {\n      const translated = translateValue(element.value);\n      if (translated !== element.value) element.value = translated;\n    }\n  };\n  const translateNode = (node) => {\n    if (node.nodeType === Node.TEXT_NODE) {\n      translateTextNode(node);\n      return;\n    }\n    if (node.nodeType !== Node.ELEMENT_NODE) return;\n    const element = node;\n    translateElement(element);\n    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);\n    let current = walker.nextNode();\n    while (current) {\n      if (current.nodeType === Node.TEXT_NODE) translateTextNode(current);\n      else if (current.nodeType === Node.ELEMENT_NODE) translateElement(current);\n      current = walker.nextNode();\n    }\n  };\n  const translateDocument = () => {\n    translateNode(document.documentElement);\n    document.title = translateValue(document.title);\n  };\n  const loadTranslations = async (locale) => {\n    const response = await fetch("/locales/" + encodeURIComponent(locale) + "/common.json", { cache: "no-store" });\n    if (!response.ok) return {};\n    const data = await response.json();\n    if (!data || typeof data !== "object" || Array.isArray(data)) return {};\n    return Object.fromEntries(Object.entries(data).filter((entry) => typeof entry[0] === "string" && typeof entry[1] === "string"));\n  };\n  const init = async () => {\n    const locale = resolveLocale();\n    document.documentElement.lang = locale;\n    try {\n      translations = await loadTranslations(locale);\n    } catch {\n      translations = {};\n    }\n    buildPatternTranslations(translations);\n    if (Object.keys(translations).length === 0) return;\n    translateDocument();\n    observer?.disconnect();\n    observer = new MutationObserver((mutations) => {\n      for (const mutation of mutations) {\n        if (mutation.type === "characterData" || mutation.type === "attributes") {\n          translateNode(mutation.target);\n          continue;\n        }\n        for (const node of mutation.addedNodes) translateNode(node);\n      }\n    });\n    observer.observe(document.documentElement, {\n      childList: true,\n      subtree: true,\n      characterData: true,\n      attributes: true,\n      attributeFilter: [...TEXT_ATTRIBUTES, "value"],\n    });\n  };\n  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => void init(), { once: true });\n  else void init();\n})();\n</script>\n${htmlEnd}\n`;
+async function runtimeTranslationScript() {
+  const script = (await fs.readFile(runtimeScriptFile, "utf8")).trim();
+  return `${htmlStart}
+<script>
+${script}
+</script>
+${htmlEnd}
+`;
 }
 
 async function patchIndexHtml(serverDir) {
   const htmlFile = path.join(serverDir, "ui-dist", "index.html");
   let content = await fs.readFile(htmlFile, "utf8");
-  const block = runtimeTranslationScript();
+  const block = await runtimeTranslationScript();
 
   if (content.includes(htmlStart)) {
     content = replaceMarkedBlock(content, htmlStart, htmlEnd, block);
@@ -175,7 +204,7 @@ const localeFile = await copyLocaleFile();
 const appFile = await patchAppJs(serverDir);
 const htmlFile = await patchIndexHtml(serverDir);
 
-console.log("Paperclip npx 中文补丁已应用。");
+console.log("Paperclip npm 中文补丁已应用。");
 console.log(`服务包：${serverDir}`);
 console.log(`中文词表：${localeFile}`);
 console.log(`后端入口：${appFile}`);
