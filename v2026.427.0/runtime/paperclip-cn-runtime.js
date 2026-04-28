@@ -4,7 +4,6 @@
 
   const DEFAULT_LOCALE = "zh-CN";
   const TEXT_ATTRIBUTES = ["placeholder", "title", "aria-label", "aria-description", "aria-placeholder", "aria-valuetext", "alt"];
-  const FORM_VALUE_TYPES = new Set(["button", "submit", "reset", "text", "search", "email", "url", "tel", ""]);
   const SKIPPED_TEXT_TAGS = new Set(["SCRIPT", "STYLE", "CODE", "PRE", "TEXTAREA"]);
   const SKIPPED_ATTRIBUTE_TAGS = new Set(["SCRIPT", "STYLE"]);
   const PLACEHOLDER_RE = /\{[a-zA-Z0-9_]+\}/g;
@@ -78,20 +77,6 @@
     if (translated !== node.nodeValue) node.nodeValue = translated;
   };
 
-  const setFormValue = (element, value) => {
-    const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-    const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
-    if (descriptor?.set) descriptor.set.call(element, value);
-    else element.value = value;
-    element.defaultValue = value;
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-  };
-
-  const translateFormValue = (element) => {
-    const translated = translateValue(element.value);
-    if (translated !== element.value) setFormValue(element, translated);
-  };
-
   const translateElement = (element) => {
     if (shouldSkipAttributeElement(element)) return;
     for (const attribute of TEXT_ATTRIBUTES) {
@@ -100,8 +85,6 @@
       const translated = translateValue(value);
       if (translated !== value) element.setAttribute(attribute, translated);
     }
-    if (element instanceof HTMLInputElement && FORM_VALUE_TYPES.has(element.type)) translateFormValue(element);
-    if (element instanceof HTMLTextAreaElement) translateFormValue(element);
   };
 
   const translateNode = (node) => {
@@ -160,7 +143,7 @@
       subtree: true,
       characterData: true,
       attributes: true,
-      attributeFilter: [...TEXT_ATTRIBUTES, "value"],
+      attributeFilter: TEXT_ATTRIBUTES,
     });
   };
 
