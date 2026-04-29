@@ -6,6 +6,7 @@
   const TEXT_ATTRIBUTES = ["placeholder", "title", "aria-label", "aria-description", "aria-placeholder", "aria-valuetext", "alt"];
   const SKIPPED_TEXT_TAGS = new Set(["SCRIPT", "STYLE", "CODE", "PRE", "TEXTAREA"]);
   const SKIPPED_ATTRIBUTE_TAGS = new Set(["SCRIPT", "STYLE"]);
+  const SKIPPED_CONTENT_SELECTOR = ".paperclip-markdown";
   const PLACEHOLDER_RE = /\{[a-zA-Z0-9_]+\}/g;
 
   let translations = {};
@@ -67,8 +68,9 @@
   };
 
   const isEditableElement = (element) => element.closest("[contenteditable]:not([contenteditable='false'])") !== null;
-  const shouldSkipTextElement = (element) => SKIPPED_TEXT_TAGS.has(element.tagName) || isEditableElement(element);
-  const shouldSkipAttributeElement = (element) => SKIPPED_ATTRIBUTE_TAGS.has(element.tagName);
+  const isUserContentElement = (element) => element.closest(SKIPPED_CONTENT_SELECTOR) !== null;
+  const shouldSkipTextElement = (element) => SKIPPED_TEXT_TAGS.has(element.tagName) || isEditableElement(element) || isUserContentElement(element);
+  const shouldSkipAttributeElement = (element) => SKIPPED_ATTRIBUTE_TAGS.has(element.tagName) || isUserContentElement(element);
 
   const translateTextNode = (node) => {
     const parent = node.parentElement;
