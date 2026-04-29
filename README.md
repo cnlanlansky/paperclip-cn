@@ -12,16 +12,33 @@ https://github.com/paperclipai/paperclip
 
 ## 🧭 版本对应
 
-| Paperclip 版本 | 补丁目录 |
-| --- | --- |
-| `v2026.427.0` | `v2026.427.0/` |
+先确认当前安装的 Paperclip 版本：
+
+```bash
+paperclipai --version
+```
+
+补丁目录和 Paperclip 版本一一对应：
+
 
 ## 🚀 使用方式
 
-在本仓库根目录运行：
+在本仓库根目录运行对应版本的补丁脚本：
 
 ```bash
-node v2026.427.0/apply-npx-patch.mjs
+node <版本号>/apply-npx-patch.mjs
+```
+
+目录通用结构：
+
+```text
+<版本号>/
+├── apply-npx-patch.mjs             # npm 安装版补丁脚本
+├── locales/
+│   └── zh-CN/
+│       └── common.json             # 中文词表
+└── runtime/
+    └── paperclip-cn-runtime.js     # 浏览器运行时汉化脚本
 ```
 
 运行后重启 Paperclip，并刷新浏览器。
